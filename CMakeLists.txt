@@ -1,25 +1,22 @@
 # # ---------------------------------------------------------------------
-# #
-# # Copyright (C) 2000 2020 by the deal.II authors
-# #
-# # This file is part of the deal.II library.
-# #
-# # The deal.II library is free software; you can use it, redistribute
-# # it, and/or modify it under the terms of the GNU Lesser General
-# # Public License as published by the Free Software Foundation; either
-# # version 2.1 of the License, or (at your option) any later version.
-# # The full text of the license can be found in the file LICENSE.md at
-# # the top level directory of deal.II.
-# #
+# # Copyright (C) 2024 by Luca Heltai
+# # This file is part of the bare-dealii-app application, based on the
+# # deal.II library.
+# # The bare-dealii-app application is free software; you can use it,
+# # redistribute it, and/or modify it under the terms of the Apache-2.0 License
+# # WITH LLVM-exception as published by the Free Software Foundation; either
+# # version 3.0 of the License, or (at your option) any later version.
+# # The full text of the license can be found in the file LICENSE.md
+# # at the top level of the bare-dealii-app distribution.
 # # ---------------------------------------------------------------------
-
-# #
-# CMake script for large project, with one executable
+#
+# CMake script for large project, with possibly many executables
 # and a library of objects
 #
 # The structure of the directory is assumed to be:
-# ./source: containing implementations and one file with "int main()"
+# ./source: containing implementations and no files with "int main()"
 # ./include: containing all class declarations
+# ./execs: containing all files with "int main()", one per executable
 # ./tests: containing pairs of files: test.cc/test.output to test
 # ./gtests: containing gtest unit tests
 # #
@@ -27,12 +24,7 @@
 # Set the name of the project and target
 # If your application follows the structure above, you don't need to
 # specify anything else.
-SET(_main_target laplacian)
-SET(_main source/main.cc)
-
-# Set the _main variable to empty if you don't want an executable
-# but only a library
-# SET(_main "")
+SET(_library_target bare)
 
 # ###########################################################
 # Normally you shouldn't need to change anything below.
@@ -40,13 +32,6 @@ SET(_main source/main.cc)
 # Declare all source files the target consists of:
 file(GLOB _files source/*cc include/*.h)
 file(GLOB _execs execs/*cc)
-
-# Don't compile the main file into the library
-IF(NOT "${_main}" STREQUAL "")
-  LIST(REMOVE_ITEM _files
-    ${CMAKE_CURRENT_SOURCE_DIR}/${_main}
-  )
-ENDIF()
 
 INCLUDE_DIRECTORIES(include)
 
@@ -56,7 +41,7 @@ FIND_PACKAGE(deal.II 9.2 REQUIRED
   HINTS ${deal.II_DIR} ${DEAL_II_DIR} ../ ../../ $ENV{DEAL_II_DIR})
 DEAL_II_INITIALIZE_CACHED_VARIABLES()
 
-PROJECT(${_main_target})
+PROJECT(${_library_target})
 DEAL_II_INITIALIZE_CACHED_VARIABLES()
 OPTION(ENABLE_DEAL_II_APP_TESTING
   "Enable deal.II style tests in this application." ON)
@@ -119,7 +104,7 @@ FOREACH(_build_type ${_d2_build_types})
 
     # Setup library
     FOREACH(_dim ${DIMENSIONS})
-      SET(_lib "${_main_target}${_dim}d${_p}")
+      SET(_lib "${_library_target}_${_dim}d${_p}")
       MESSAGE("-- Configuring library ${_lib}")
 
       ADD_LIBRARY(${_lib} SHARED ${_files})
@@ -134,26 +119,10 @@ FOREACH(_build_type ${_d2_build_types})
       DEAL_II_SETUP_TARGET(${_lib} ${_BUILD_TYPE})
       SET(TEST_LIBRARIES_${_BUILD_TYPE} ${_lib})
 
-      # Setup one main executable per dimension/per build type
-      SET(_lib "${_main_target}${_dim}d${_p}")
-      SET(_main_exe "${_main_target}_${_dim}d${${_build_type}_postfix}")
-      MESSAGE("-- Configuring executable ${_main_exe}")
-      ADD_EXECUTABLE(${_main_exe} ${_main})
-      TARGET_LINK_LIBRARIES(${_main_exe} ${_lib})
-      TARGET_COMPILE_DEFINITIONS(${_main_exe} PUBLIC DEAL_DIMENSION=${_dim})
-
-      IF(likwid_FOUND)
-        TARGET_COMPILE_DEFINITIONS(${_main_exe} PUBLIC LIKWID_PERFMON)
-        TARGET_LINK_LIBRARIES(${_main_exe} ${LIKWID_LIBRARY})
-        MESSAGE("-- Configuring  ${_main_exe} with LIKWID")
-      endif()
-
-      DEAL_II_SETUP_TARGET(${_main_exe} ${_BUILD_TYPE})
-
-      # Setup additional executables
+      # Setup executables
       FOREACH(__exec ${_execs})
         get_filename_component(exec_name ${__exec} NAME_WE)
-        MESSAGE("-- Configuring executable ${exec_name}-${_dim}d${$_p}")
+        MESSAGE("-- Configuring executable ${exec_name}_${_dim}d${$_p}")
         SET(_exe "${exec_name}_${_dim}d${${_build_type}_postfix}")
         MESSAGE("-- Configuring executable ${_exe}")
         ADD_EXECUTABLE(${_exe} ${__exec})
@@ -163,7 +132,7 @@ FOREACH(_build_type ${_d2_build_types})
         IF(likwid_FOUND)
           TARGET_COMPILE_DEFINITIONS(${_exe} PUBLIC LIKWID_PERFMON)
           TARGET_LINK_LIBRARIES(${_exe} ${LIKWID_LIBRARY})
-          MESSAGE("-- Configuring  ${_sideexe} with LIKWID")
+          MESSAGE("-- Configuring  ${_exe} with LIKWID")
         endif()
 
         DEAL_II_SETUP_TARGET(${_exe} ${_BUILD_TYPE})
@@ -196,8 +165,18 @@ IF(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in)
     configure_file(${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile @ONLY)
     add_custom_target(doc
       ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile
-      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
       COMMENT "Generating API documentation with Doxygen" VERBATIM)
+    MESSAGE("-- Configured Doxygen")
+  endif(DOXYGEN_FOUND)
+elseif(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/doc/Doxyfile)
+  find_package(Doxygen)
+
+  if(DOXYGEN_FOUND)
+    add_custom_target(doc
+      ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/doc/Doxyfile
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Generating API documentation with Doxygen" VERBATIM)
     MESSAGE("-- Configured Doxygen")
   endif(DOXYGEN_FOUND)
 endif()
