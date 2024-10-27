@@ -13,10 +13,10 @@
 // at the top level of the bare-dealii-app distribution.
 //
 // ---------------------------------------------------------------------
+#include "laplacian.h"
+
 #include <chrono>
 #include <iostream>
-
-#include "laplacian.h"
 
 int
 main()
